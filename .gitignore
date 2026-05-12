@@ -1,4 +1,9 @@
 __pycache__/
 *.pyc
 
+.arduino-build/
+.arduino-cli-data/
+.arduino-cli-downloads/
+.arduino-cli-user/
+
 3D Model/
