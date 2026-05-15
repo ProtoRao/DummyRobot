@@ -7,15 +7,13 @@ constexpr uint8_t SERVO_CHANNELS[] = {12, 13, 14, 10, 8};
 constexpr int16_t INITIAL_ANGLES[] = {90, 90, 0, 0, 0};
 constexpr int16_t LOGICAL_MIN_ANGLES[] = {0, 0, -90, -90, -90};
 constexpr int16_t LOGICAL_MAX_ANGLES[] = {180, 180, 90, 90, 90};
-constexpr int16_t ANGLE_OFFSETS[] = {0, -5, 0, 0, 0};
-constexpr int16_t STANDARD_PULSE_TRIMS[] = {-75, -12, 0, 0, 0};
-constexpr uint16_t CENTER_PULSES[] = {0, 0, 500, 300, 350};
 constexpr bool CENTERED_POSITIVE_INCREASES_PWM[] = {false, false, false, false, true};
 constexpr uint8_t SERVO_COUNT = sizeof(SERVO_CHANNELS) / sizeof(SERVO_CHANNELS[0]);
 
 // Tune this range if your servos need slightly different endpoints.
 constexpr uint16_t SERVO_MIN_PULSE = 150;
 constexpr uint16_t SERVO_MAX_PULSE = 600;
+constexpr uint16_t STANDARD_CENTER_PULSE = (SERVO_MIN_PULSE + SERVO_MAX_PULSE) / 2;
 constexpr int16_t CENTERED_RANGE_DEGREES = 90;
 constexpr int16_t HALF_PULSE_RANGE = (SERVO_MAX_PULSE - SERVO_MIN_PULSE) / 2;
 constexpr uint8_t SMOOTH_MIN_STEP_PULSE = 1;
@@ -37,11 +35,6 @@ uint16_t physicalAngleToPulse(int16_t angle) {
   return map(constrain(angle, 0, 180), 0, 180, SERVO_MIN_PULSE, SERVO_MAX_PULSE);
 }
 
-int16_t applyServoCalibration(uint8_t servoIndex, int16_t angle) {
-  const int correctedAngle = static_cast<int>(angle) + ANGLE_OFFSETS[servoIndex];
-  return constrain(correctedAngle, 0, 180);
-}
-
 uint16_t centeredAngleToPulse(uint8_t servoIndex, int16_t angle) {
   int centeredPulse = 0;
   if (CENTERED_POSITIVE_INCREASES_PWM[servoIndex]) {
@@ -49,15 +42,15 @@ uint16_t centeredAngleToPulse(uint8_t servoIndex, int16_t angle) {
         angle,
         -CENTERED_RANGE_DEGREES,
         CENTERED_RANGE_DEGREES,
-        CENTER_PULSES[servoIndex] - HALF_PULSE_RANGE,
-        CENTER_PULSES[servoIndex] + HALF_PULSE_RANGE);
+        STANDARD_CENTER_PULSE - HALF_PULSE_RANGE,
+        STANDARD_CENTER_PULSE + HALF_PULSE_RANGE);
   } else {
     centeredPulse = map(
         angle,
         -CENTERED_RANGE_DEGREES,
         CENTERED_RANGE_DEGREES,
-        CENTER_PULSES[servoIndex] + HALF_PULSE_RANGE,
-        CENTER_PULSES[servoIndex] - HALF_PULSE_RANGE);
+        STANDARD_CENTER_PULSE + HALF_PULSE_RANGE,
+        STANDARD_CENTER_PULSE - HALF_PULSE_RANGE);
   }
   return static_cast<uint16_t>(constrain(centeredPulse, SERVO_MIN_PULSE, SERVO_MAX_PULSE));
 }
@@ -108,9 +101,7 @@ void setServoByIndex(uint8_t servoIndex, int16_t angle) {
     finalPulse = centeredAngleToPulse(servoIndex, angle);
   } else {
     const int16_t physicalAngle = logicalAngleToPhysicalAngle(servoIndex, angle);
-    const int16_t correctedAngle = applyServoCalibration(servoIndex, physicalAngle);
-    const int adjustedPulse = static_cast<int>(physicalAngleToPulse(correctedAngle)) + STANDARD_PULSE_TRIMS[servoIndex];
-    finalPulse = static_cast<uint16_t>(constrain(adjustedPulse, SERVO_MIN_PULSE, SERVO_MAX_PULSE));
+    finalPulse = physicalAngleToPulse(physicalAngle);
   }
   moveServoSmooth(servoIndex, finalPulse);
   currentAngles[servoIndex] = angle;
