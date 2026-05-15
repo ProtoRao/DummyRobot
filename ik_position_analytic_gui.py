@@ -37,6 +37,8 @@ class IKSolution:
     servo_angles_deg: list[int]
     pose: CartesianPose
     total_joint_delta_deg: float
+    branch_label: str = ""
+    position_error_mm: float = 0.0
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -56,51 +58,52 @@ def model_to_servo_degrees(model_angles_deg: list[float]) -> list[int]:
     return servo_angles
 
 
-# def matrix_multiply(left: list[list[float]], right: list[list[float]]) -> list[list[float]]:
-#     return [
-#         [sum(left[row][k] * right[k][column] for k in range(len(right))) for column in range(len(right[0]))]
-#         for row in range(len(left))
-#     ]
+def matrix_multiply(left: list[list[float]], right: list[list[float]]) -> list[list[float]]:
+    return [
+        [sum(left[row][k] * right[k][column] for k in range(len(right))) for column in range(len(right[0]))]
+        for row in range(len(left))
+    ]
 
 
-# def dh_transform(theta_rad: float, d_mm: float, a_mm: float, alpha_rad: float) -> list[list[float]]:
-#     cos_theta = math.cos(theta_rad)
-#     sin_theta = math.sin(theta_rad)
-#     cos_alpha = math.cos(alpha_rad)
-#     sin_alpha = math.sin(alpha_rad)
-#     return [
-#         [cos_theta, -sin_theta * cos_alpha, sin_theta * sin_alpha, a_mm * cos_theta],
-#         [sin_theta, cos_theta * cos_alpha, -cos_theta * sin_alpha, a_mm * sin_theta],
-#         [0.0, sin_alpha, cos_alpha, d_mm],
-#         [0.0, 0.0, 0.0, 1.0],
-#     ]
+def dh_transform(theta_rad: float, d_mm: float, a_mm: float, alpha_rad: float) -> list[list[float]]:
+    cos_theta = math.cos(theta_rad)
+    sin_theta = math.sin(theta_rad)
+    cos_alpha = math.cos(alpha_rad)
+    sin_alpha = math.sin(alpha_rad)
+    return [
+        [cos_theta, -sin_theta * cos_alpha, sin_theta * sin_alpha, a_mm * cos_theta],
+        [sin_theta, cos_theta * cos_alpha, -cos_theta * sin_alpha, a_mm * sin_theta],
+        [0.0, sin_alpha, cos_alpha, d_mm],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
 
 
-# def compose_reference_transform(model_angles_rad: list[float]) -> list[list[float]]:
-#     transforms = [
-#         dh_transform(model_angles_rad[0], D1_MM, 0.0, math.pi / 2.0),
-#         dh_transform(model_angles_rad[1], D2_MM, A2_MM, 0.0),
-#         dh_transform(model_angles_rad[2], 0.0, A3_MM / 2.0, 0.0),
-#     ]
+def compose_reference_transform(model_angles_rad: list[float]) -> list[list[float]]:
+    transforms = [
+        dh_transform(model_angles_rad[0], D1_MM, 0.0, math.pi / 2.0),
+        dh_transform(model_angles_rad[1], D2_MM, A2_MM, 0.0),
+        dh_transform(model_angles_rad[2], 0.0, A3_MM / 2.0, 0.0),
+    ]
 
-#     result = [
-#         [1.0, 0.0, 0.0, 0.0],
-#         [0.0, 1.0, 0.0, 0.0],
-#         [0.0, 0.0, 1.0, 0.0],
-#         [0.0, 0.0, 0.0, 1.0],
-#     ]
-#     for transform in transforms:
-#         result = matrix_multiply(result, transform)
-#     return result
+    result = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+    for transform in transforms:
+        result = matrix_multiply(result, transform)
+    return result
 
 
-# def forward_kinematics_from_model(model_angles_deg: list[float]) -> CartesianPose:
-#     transform = compose_reference_transform([math.radians(value) for value in model_angles_deg[:3]])
-#     return CartesianPose(
-#         x_mm=transform[0][3],
-#         y_mm=transform[1][3],
-#         z_mm=transform[2][3],
-#     )
+def forward_kinematics_from_model(model_angles_deg: list[float]) -> CartesianPose:
+    transform = compose_reference_transform([math.radians(value) for value in model_angles_deg[:3]])
+    return CartesianPose(
+        x_mm=transform[0][3],
+        y_mm=transform[1][3],
+        z_mm=transform[2][3],
+    )
+
 
 def solve_xyz_inverse_kinematics(
     target_x_mm: float,
@@ -112,7 +115,10 @@ def solve_xyz_inverse_kinematics(
     if not valid_solutions:
         raise ValueError("No valid 3-link XYZ solution met the current joint-limit and workspace checks.")
 
-    return valid_solutions
+    # pick best solution (prefer minimal position error, then minimal joint travel)
+    valid_solutions.sort(key=lambda s: (s.position_error_mm, s.total_joint_delta_deg))
+    best_solution = valid_solutions[0]
+    return best_solution, valid_solutions
 
 
 class CartesianIKApp:
