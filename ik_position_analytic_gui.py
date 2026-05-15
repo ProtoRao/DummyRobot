@@ -109,8 +109,6 @@ def solve_xyz_inverse_kinematics(
     current_servo_deg: list[float],
 ) -> tuple[IKSolution, list[IKSolution]]:
 
-
-
     if not valid_solutions:
         raise ValueError("No valid 3-link XYZ solution met the current joint-limit and workspace checks.")
 
