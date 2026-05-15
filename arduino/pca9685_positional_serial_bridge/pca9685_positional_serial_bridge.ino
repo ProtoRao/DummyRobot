@@ -4,18 +4,18 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
 
 constexpr uint8_t SERVO_CHANNELS[] = {12, 13, 14, 10, 8};
-constexpr int16_t INITIAL_ANGLES[] = {90, 90, 0, 0, 0};
+constexpr int16_t INITIAL_ANGLES[] = {90, 90, -90, 0, 0};
 constexpr int16_t LOGICAL_MIN_ANGLES[] = {0, 0, -90, -90, -90};
 constexpr int16_t LOGICAL_MAX_ANGLES[] = {180, 180, 90, 90, 90};
 constexpr bool CENTERED_POSITIVE_INCREASES_PWM[] = {false, false, false, false, true};
 constexpr uint8_t SERVO_COUNT = sizeof(SERVO_CHANNELS) / sizeof(SERVO_CHANNELS[0]);
 
 // Tune this range if your servos need slightly different endpoints.
-constexpr uint16_t SERVO_MIN_PULSE = 150;
-constexpr uint16_t SERVO_MAX_PULSE = 600;
-constexpr uint16_t STANDARD_CENTER_PULSE = (SERVO_MIN_PULSE + SERVO_MAX_PULSE) / 2;
+constexpr uint16_t SERVO_MIN_PULSE[] = {100, 130, 100, 150, 150};
+constexpr uint16_t SERVO_MAX_PULSE[] = {570, 560, 570, 640, 640};
+constexpr uint16_t STANDARD_CENTER_PULSE[] = {335, 345, 335, 395, 395};
 constexpr int16_t CENTERED_RANGE_DEGREES = 90;
-constexpr int16_t HALF_PULSE_RANGE = (SERVO_MAX_PULSE - SERVO_MIN_PULSE) / 2;
+constexpr int16_t HALF_PULSE_RANGE[] = {235, 235, 235, 245, 245};
 constexpr uint8_t SMOOTH_MIN_STEP_PULSE = 1;
 constexpr uint8_t SMOOTH_MAX_STEP_PULSE = 4;
 constexpr uint8_t SMOOTH_STEP_DELAY_MS = 8;
@@ -31,8 +31,8 @@ int16_t logicalAngleToPhysicalAngle(uint8_t servoIndex, int16_t angle) {
   return angle;
 }
 
-uint16_t physicalAngleToPulse(int16_t angle) {
-  return map(constrain(angle, 0, 180), 0, 180, SERVO_MIN_PULSE, SERVO_MAX_PULSE);
+uint16_t physicalAngleToPulse(uint8_t servoIndex, int16_t angle) {
+  return map(constrain(angle, 0, 180), 0, 180, SERVO_MIN_PULSE[servoIndex], SERVO_MAX_PULSE[servoIndex]);
 }
 
 uint16_t centeredAngleToPulse(uint8_t servoIndex, int16_t angle) {
@@ -42,17 +42,17 @@ uint16_t centeredAngleToPulse(uint8_t servoIndex, int16_t angle) {
         angle,
         -CENTERED_RANGE_DEGREES,
         CENTERED_RANGE_DEGREES,
-        STANDARD_CENTER_PULSE - HALF_PULSE_RANGE,
-        STANDARD_CENTER_PULSE + HALF_PULSE_RANGE);
+        STANDARD_CENTER_PULSE[servoIndex] - HALF_PULSE_RANGE[servoIndex],
+        STANDARD_CENTER_PULSE[servoIndex] + HALF_PULSE_RANGE[servoIndex]);
   } else {
     centeredPulse = map(
         angle,
         -CENTERED_RANGE_DEGREES,
         CENTERED_RANGE_DEGREES,
-        STANDARD_CENTER_PULSE + HALF_PULSE_RANGE,
-        STANDARD_CENTER_PULSE - HALF_PULSE_RANGE);
+        STANDARD_CENTER_PULSE[servoIndex] + HALF_PULSE_RANGE[servoIndex],
+        STANDARD_CENTER_PULSE[servoIndex] - HALF_PULSE_RANGE[servoIndex]);
   }
-  return static_cast<uint16_t>(constrain(centeredPulse, SERVO_MIN_PULSE, SERVO_MAX_PULSE));
+  return static_cast<uint16_t>(constrain(centeredPulse, SERVO_MIN_PULSE[servoIndex], SERVO_MAX_PULSE[servoIndex]));
 }
 
 void moveServoSmooth(uint8_t servoIndex, uint16_t targetPulse) {
@@ -101,7 +101,7 @@ void setServoByIndex(uint8_t servoIndex, int16_t angle) {
     finalPulse = centeredAngleToPulse(servoIndex, angle);
   } else {
     const int16_t physicalAngle = logicalAngleToPhysicalAngle(servoIndex, angle);
-    finalPulse = physicalAngleToPulse(physicalAngle);
+    finalPulse = physicalAngleToPulse(servoIndex, physicalAngle);
   }
   moveServoSmooth(servoIndex, finalPulse);
   currentAngles[servoIndex] = angle;
@@ -199,7 +199,7 @@ void setup() {
   Serial.begin(115200);
   Wire.begin();
   pwm.begin();
-  pwm.setPWMFreq(50);
+  pwm.setPWMFreq(60);
   delay(10);
 
   applyInitialPositions();
