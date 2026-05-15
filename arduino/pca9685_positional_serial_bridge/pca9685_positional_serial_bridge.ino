@@ -5,15 +5,14 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(0x40);
 
 constexpr uint8_t SERVO_CHANNELS[] = {12, 13, 14, 10, 8};
 constexpr int16_t INITIAL_ANGLES[] = {90, 90, -90, 0, 0};
-constexpr int16_t LOGICAL_MIN_ANGLES[] = {0, 0, -90, -90, -90};
-constexpr int16_t LOGICAL_MAX_ANGLES[] = {180, 180, 90, 90, 90};
-constexpr bool CENTERED_POSITIVE_INCREASES_PWM[] = {false, false, false, false, true};
+constexpr int16_t LOGICAL_MIN_ANGLES[] = {0, 0, -150, -90, -90};
+constexpr int16_t LOGICAL_MAX_ANGLES[] = {180, 180, 30, 90, 90};
+constexpr int8_t  CENTERED_POSITIVE_INCREASES_PWM[] = {0, 0, 1, 0, 2};
 constexpr uint8_t SERVO_COUNT = sizeof(SERVO_CHANNELS) / sizeof(SERVO_CHANNELS[0]);
 
-// Tune this range if your servos need slightly different endpoints.
-constexpr uint16_t SERVO_MIN_PULSE[] = {100, 130, 100, 150, 150};
-constexpr uint16_t SERVO_MAX_PULSE[] = {570, 560, 570, 640, 640};
-constexpr uint16_t STANDARD_CENTER_PULSE[] = {335, 345, 335, 395, 395};
+constexpr uint16_t SERVO_MIN_PULSE[] = {85, 100, 500, 150, 140};
+constexpr uint16_t SERVO_MAX_PULSE[] = {475, 480, 140, 640, 540};
+constexpr uint16_t STANDARD_CENTER_PULSE[] = {280, 280, 380, 395, 340};
 constexpr int16_t CENTERED_RANGE_DEGREES = 90;
 constexpr int16_t HALF_PULSE_RANGE[] = {235, 235, 235, 245, 245};
 constexpr uint8_t SMOOTH_MIN_STEP_PULSE = 1;
@@ -23,44 +22,14 @@ constexpr uint8_t SMOOTH_STEP_DELAY_MS = 8;
 int16_t currentAngles[SERVO_COUNT];
 uint16_t currentPulses[SERVO_COUNT];
 
-int16_t clampLogicalAngle(uint8_t servoIndex, int16_t angle) {
-  return constrain(angle, LOGICAL_MIN_ANGLES[servoIndex], LOGICAL_MAX_ANGLES[servoIndex]);
-}
-
-int16_t logicalAngleToPhysicalAngle(uint8_t servoIndex, int16_t angle) {
-  return angle;
-}
-
 uint16_t physicalAngleToPulse(uint8_t servoIndex, int16_t angle) {
-  return map(constrain(angle, 0, 180), 0, 180, SERVO_MIN_PULSE[servoIndex], SERVO_MAX_PULSE[servoIndex]);
-}
-
-uint16_t centeredAngleToPulse(uint8_t servoIndex, int16_t angle) {
-  int centeredPulse = 0;
-  if (CENTERED_POSITIVE_INCREASES_PWM[servoIndex]) {
-    centeredPulse = map(
-        angle,
-        -CENTERED_RANGE_DEGREES,
-        CENTERED_RANGE_DEGREES,
-        STANDARD_CENTER_PULSE[servoIndex] - HALF_PULSE_RANGE[servoIndex],
-        STANDARD_CENTER_PULSE[servoIndex] + HALF_PULSE_RANGE[servoIndex]);
-  } else {
-    centeredPulse = map(
-        angle,
-        -CENTERED_RANGE_DEGREES,
-        CENTERED_RANGE_DEGREES,
-        STANDARD_CENTER_PULSE[servoIndex] + HALF_PULSE_RANGE[servoIndex],
-        STANDARD_CENTER_PULSE[servoIndex] - HALF_PULSE_RANGE[servoIndex]);
-  }
-  return static_cast<uint16_t>(constrain(centeredPulse, SERVO_MIN_PULSE[servoIndex], SERVO_MAX_PULSE[servoIndex]));
+  return map(angle, LOGICAL_MIN_ANGLES[servoIndex], LOGICAL_MAX_ANGLES[servoIndex], SERVO_MIN_PULSE[servoIndex], SERVO_MAX_PULSE[servoIndex]);
 }
 
 void moveServoSmooth(uint8_t servoIndex, uint16_t targetPulse) {
   const uint8_t channel = SERVO_CHANNELS[servoIndex];
   uint16_t currentPulse = currentPulses[servoIndex];
 
-  // On first command after boot, we do not know the real physical starting pulse.
-  // Set directly once, then smooth all later moves from the cached position.
   if (currentPulse == 0) {
     pwm.setPWM(channel, 0, targetPulse);
     currentPulses[servoIndex] = targetPulse;
@@ -95,14 +64,11 @@ void moveServoSmooth(uint8_t servoIndex, uint16_t targetPulse) {
 }
 
 void setServoByIndex(uint8_t servoIndex, int16_t angle) {
-  angle = clampLogicalAngle(servoIndex, angle);
+  angle = constrain(angle, LOGICAL_MIN_ANGLES[servoIndex], LOGICAL_MAX_ANGLES[servoIndex]);
   uint16_t finalPulse = 0;
-  if (LOGICAL_MIN_ANGLES[servoIndex] == -90) {
-    finalPulse = centeredAngleToPulse(servoIndex, angle);
-  } else {
-    const int16_t physicalAngle = logicalAngleToPhysicalAngle(servoIndex, angle);
-    finalPulse = physicalAngleToPulse(servoIndex, physicalAngle);
-  }
+
+  finalPulse = physicalAngleToPulse(servoIndex, angle);
+  
   moveServoSmooth(servoIndex, finalPulse);
   currentAngles[servoIndex] = angle;
 }
@@ -199,9 +165,8 @@ void setup() {
   Serial.begin(115200);
   Wire.begin();
   pwm.begin();
-  pwm.setPWMFreq(60);
+  pwm.setPWMFreq(50);
   delay(10);
-
   applyInitialPositions();
   Serial.println("READY");
 }
