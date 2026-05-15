@@ -5,11 +5,12 @@ def solve_ik(x, y, z, phi, H, L1, L2, L3):
     # Base rotation
 
     L2offset = 16.7
+    Hoffset = 13.92
 
     theta1 = math.atan2(y, x) - math.asin(L2offset / math.sqrt(x*x + y*y))
 
     # Planar distance
-    r = math.sqrt(x*x + y*y - L2offset*L2offset) - 13.92
+    r = math.sqrt(x*x + y*y - L2offset*L2offset) - Hoffset
 
     # Shift into shoulder frame
     zs = z - H
@@ -56,7 +57,7 @@ angles = solve_ik(
     phi=0,     # end-effector pitch in radians
     H=97,      # base height
     L1=120,
-    L2=92,
+    L2=89.75,
     L3=0
 )
 
