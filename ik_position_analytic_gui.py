@@ -34,11 +34,7 @@ class CartesianPose:
 @dataclass
 class IKSolution:
     model_angles_deg: list[float]
-    servo_angles_deg: list[int]
-    pose: CartesianPose
-    total_joint_delta_deg: float
-    branch_label: str = ""
-    position_error_mm: float = 0.0
+    servo_angles_deg: list[float]
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -104,22 +100,64 @@ def forward_kinematics_from_model(model_angles_deg: list[float]) -> CartesianPos
         z_mm=transform[2][3],
     )
 
-
 def solve_xyz_inverse_kinematics(
-    target_x_mm: float,
-    target_y_mm: float,
-    target_z_mm: float,
-    current_servo_deg: list[float],
-) -> tuple[IKSolution, list[IKSolution]]:
+    x: float,
+    y: float,
+    z: float,
+) -> IKSolution:
+    
+    # Base rotation
+    L1 = 120.0
+    L2 = 89.75
+    L3 = 64.3
+    H = 97.0
+    phi = 0.0
+    Hoffset = 13.92
+    L2offset = 28.1
+    L3offset = 7.95
+    L3offset2 = 11.5
 
-    if not valid_solutions:
-        raise ValueError("No valid 3-link XYZ solution met the current joint-limit and workspace checks.")
+    theta1 = math.atan2(y, x) - math.asin(L3offset / math.sqrt(x*x + y*y))
 
-    # pick best solution (prefer minimal position error, then minimal joint travel)
-    valid_solutions.sort(key=lambda s: (s.position_error_mm, s.total_joint_delta_deg))
-    best_solution = valid_solutions[0]
-    return best_solution, valid_solutions
+    # Planar distance
+    x = x + L3offset * math.sin(theta1)
+    y = y - L3offset * math.cos(theta1)
 
+    r = math.sqrt(x*x + y*y) - Hoffset
+
+    # Shift into shoulder frame
+    zs = z - H
+
+    # Wrist center
+    rw = r - L3 * math.cos(phi) + L3offset2 * math.sin(phi)
+    zw = zs - L3 * math.sin(phi) - L3offset2 * math.cos(phi)
+                                                      
+    # Elbow IK
+    L2a = L2 + L2offset
+    D = (rw**2 + zw**2 - L1**2 - L2a**2) / (2 * L1 * L2a)
+
+    # Reachability check
+    if abs(D) > 1:
+        return None
+
+    # Elbow-down solution
+    theta3 = math.atan2(math.sqrt(1 - D*D), D)
+
+    # Shoulder angle
+    theta2 = (
+        math.atan2(zw, rw)
+        + math.atan2(
+            L2a * math.sin(theta3),
+            L1 + L2a * math.cos(theta3)
+        )
+    )
+
+    # Wrist angle
+    theta4 = phi + theta3 - theta2
+
+    theta3 = theta3 * -1  # Invert theta3 to match the physical configuration of the robot
+
+    return IKSolution(model_angles_deg=[math.degrees(theta1), math.degrees(theta2), math.degrees(theta3), math.degrees(theta4)], servo_angles_deg=[math.degrees(theta1), math.degrees(theta2), math.degrees(theta3), math.degrees(theta4)])
 
 class CartesianIKApp:
     def __init__(self, root: tk.Tk) -> None:
@@ -132,9 +170,9 @@ class CartesianIKApp:
 
         self.status_var = tk.StringVar(value="Disconnected")
         self.target_vars = {
-            "x": tk.StringVar(value="4.2"),
-            "y": tk.StringVar(value="137.4"),
-            "z": tk.StringVar(value="190.4"),
+            "x": tk.StringVar(value="-7.95"),
+            "y": tk.StringVar(value="196.06"),
+            "z": tk.StringVar(value="228.075"),
         }
         self.pose_vars = {
             "x": tk.StringVar(value="--"),
@@ -218,7 +256,7 @@ class CartesianIKApp:
         tk.Label(frame, text="Servo", width=8).grid(row=table_row + 1, column=3, sticky="w")
         tk.Label(frame, text="Command / Model", width=22).grid(row=table_row + 1, column=4, sticky="w")
 
-        for servo_index in range(3):
+        for servo_index in range(5):
             row_index = table_row + 2 + servo_index
             angle_var = tk.StringVar(value="--")
             self.solution_rows.append({"angle_var": angle_var})
@@ -301,18 +339,15 @@ class CartesianIKApp:
                 self.client.connect()
             self._refresh_current_state()
             target_x, target_y, target_z = self._parse_target_entries()
-            solution, all_solutions = solve_xyz_inverse_kinematics(
+            solution = solve_xyz_inverse_kinematics(
                 target_x,
                 target_y,
-                target_z,
-                self.current_servo_angles,
+                target_z
             )
             self.preview_solution = solution
             self._set_solution_display(solution)
             self.status_var.set(
-                f"Preview ready: {solution.branch_label}, "
-                f"{len(all_solutions)} valid branch(es), "
-                f"pos err {solution.position_error_mm:.2f} mm."
+                f"Preview ready"
             )
         except Exception as exc:
             self.preview_solution = None
@@ -326,7 +361,7 @@ class CartesianIKApp:
             return
 
         try:
-            for servo_index in range(3):
+            for servo_index in range(5):
                 self.client.set_angle(servo_index, self.preview_solution.servo_angles_deg[servo_index])
             self._refresh_current_state()
             if self.current_pose is not None:
