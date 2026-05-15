@@ -37,6 +37,8 @@ class IKSolution:
     servo_angles_deg: list[int]
     pose: CartesianPose
     total_joint_delta_deg: float
+    branch_label: str = ""
+    position_error_mm: float = 0.0
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -56,51 +58,52 @@ def model_to_servo_degrees(model_angles_deg: list[float]) -> list[int]:
     return servo_angles
 
 
-# def matrix_multiply(left: list[list[float]], right: list[list[float]]) -> list[list[float]]:
-#     return [
-#         [sum(left[row][k] * right[k][column] for k in range(len(right))) for column in range(len(right[0]))]
-#         for row in range(len(left))
-#     ]
+def matrix_multiply(left: list[list[float]], right: list[list[float]]) -> list[list[float]]:
+    return [
+        [sum(left[row][k] * right[k][column] for k in range(len(right))) for column in range(len(right[0]))]
+        for row in range(len(left))
+    ]
 
 
-# def dh_transform(theta_rad: float, d_mm: float, a_mm: float, alpha_rad: float) -> list[list[float]]:
-#     cos_theta = math.cos(theta_rad)
-#     sin_theta = math.sin(theta_rad)
-#     cos_alpha = math.cos(alpha_rad)
-#     sin_alpha = math.sin(alpha_rad)
-#     return [
-#         [cos_theta, -sin_theta * cos_alpha, sin_theta * sin_alpha, a_mm * cos_theta],
-#         [sin_theta, cos_theta * cos_alpha, -cos_theta * sin_alpha, a_mm * sin_theta],
-#         [0.0, sin_alpha, cos_alpha, d_mm],
-#         [0.0, 0.0, 0.0, 1.0],
-#     ]
+def dh_transform(theta_rad: float, d_mm: float, a_mm: float, alpha_rad: float) -> list[list[float]]:
+    cos_theta = math.cos(theta_rad)
+    sin_theta = math.sin(theta_rad)
+    cos_alpha = math.cos(alpha_rad)
+    sin_alpha = math.sin(alpha_rad)
+    return [
+        [cos_theta, -sin_theta * cos_alpha, sin_theta * sin_alpha, a_mm * cos_theta],
+        [sin_theta, cos_theta * cos_alpha, -cos_theta * sin_alpha, a_mm * sin_theta],
+        [0.0, sin_alpha, cos_alpha, d_mm],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
 
 
-# def compose_reference_transform(model_angles_rad: list[float]) -> list[list[float]]:
-#     transforms = [
-#         dh_transform(model_angles_rad[0], D1_MM, 0.0, math.pi / 2.0),
-#         dh_transform(model_angles_rad[1], D2_MM, A2_MM, 0.0),
-#         dh_transform(model_angles_rad[2], 0.0, A3_MM / 2.0, 0.0),
-#     ]
+def compose_reference_transform(model_angles_rad: list[float]) -> list[list[float]]:
+    transforms = [
+        dh_transform(model_angles_rad[0], D1_MM, 0.0, math.pi / 2.0),
+        dh_transform(model_angles_rad[1], D2_MM, A2_MM, 0.0),
+        dh_transform(model_angles_rad[2], 0.0, A3_MM / 2.0, 0.0),
+    ]
 
-#     result = [
-#         [1.0, 0.0, 0.0, 0.0],
-#         [0.0, 1.0, 0.0, 0.0],
-#         [0.0, 0.0, 1.0, 0.0],
-#         [0.0, 0.0, 0.0, 1.0],
-#     ]
-#     for transform in transforms:
-#         result = matrix_multiply(result, transform)
-#     return result
+    result = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+    for transform in transforms:
+        result = matrix_multiply(result, transform)
+    return result
 
 
-# def forward_kinematics_from_model(model_angles_deg: list[float]) -> CartesianPose:
-#     transform = compose_reference_transform([math.radians(value) for value in model_angles_deg[:3]])
-#     return CartesianPose(
-#         x_mm=transform[0][3],
-#         y_mm=transform[1][3],
-#         z_mm=transform[2][3],
-#     )
+def forward_kinematics_from_model(model_angles_deg: list[float]) -> CartesianPose:
+    transform = compose_reference_transform([math.radians(value) for value in model_angles_deg[:3]])
+    return CartesianPose(
+        x_mm=transform[0][3],
+        y_mm=transform[1][3],
+        z_mm=transform[2][3],
+    )
+
 
 def solve_xyz_inverse_kinematics(
     target_x_mm: float,
@@ -109,12 +112,95 @@ def solve_xyz_inverse_kinematics(
     current_servo_deg: list[float],
 ) -> tuple[IKSolution, list[IKSolution]]:
 
+    # Adapted from IK_test.py: planar 3-link inverse kinematics (assumes end-effector pitch = 0)
+    x = target_x_mm
+    y = target_y_mm
+    z = target_z_mm
+    phi = 0.0
 
+    L2offset = 16.7
+    Hoffset = 13.92
+
+    planar = math.hypot(x, y)
+    if planar <= abs(L2offset) + 1e-9:
+        raise ValueError("Target too close to base axis in XY plane.")
+
+    # base rotation (accounts for an offset on link 2)
+    theta1_rad = math.atan2(y, x) - math.asin(L2offset / planar)
+
+    # planar projection into the shoulder frame
+    r = math.sqrt(max(0.0, x * x + y * y - L2offset * L2offset)) - Hoffset
+
+    zs = z - D1_MM
+
+    # link lengths (model units)
+    L1 = A2_MM
+    L2 = A3_MM
+    L3 = 0.0
+
+    # wrist center
+    rw = r - L3 * math.cos(phi)
+    zw = zs - L3 * math.sin(phi)
+
+    # cosine law for elbow
+    D = (rw * rw + zw * zw - L1 * L1 - L2 * L2) / (2 * L1 * L2)
+
+    if abs(D) > 1.0 + SINGULARITY_EPSILON:
+        raise ValueError("No valid 3-link XYZ solution met the current joint-limit and workspace checks.")
+
+    D = clamp(D, -1.0, 1.0)
+
+    valid_solutions: list[IKSolution] = []
+
+    # consider both elbow-up and elbow-down branches
+    sqrt_term = math.sqrt(max(0.0, 1.0 - D * D))
+    for sign in (1.0, -1.0):
+        theta3_rad = math.atan2(sign * sqrt_term, D)
+        theta2_rad = (
+            math.atan2(zw, rw)
+            + math.atan2(L2 * math.sin(theta3_rad), L1 + L2 * math.cos(theta3_rad))
+        )
+
+        # mirror sign convention from IK_test
+        theta3_deg = math.degrees(-theta3_rad)
+        theta2_deg = math.degrees(theta2_rad)
+        theta1_deg = math.degrees(theta1_rad)
+
+        model_angles = [theta1_deg, theta2_deg, theta3_deg]
+
+        # joint-limit checks (model coordinates)
+        in_limits = True
+        for idx, ang in enumerate(model_angles):
+            min_ang, max_ang = MODEL_LIMITS_DEG[idx]
+            if ang < min_ang - 1e-6 or ang > max_ang + 1e-6:
+                in_limits = False
+                break
+        if not in_limits:
+            continue
+
+        servo_angles = model_to_servo_degrees(model_angles)
+        pose = forward_kinematics_from_model(model_angles)
+        position_error_mm = math.hypot(pose.x_mm - x, pose.y_mm - y, pose.z_mm - z)
+        total_joint_delta_deg = sum(abs(servo_angles[i] - current_servo_deg[i]) for i in range(min(3, len(current_servo_deg))))
+        branch_label = "elbow-down" if sign == 1.0 else "elbow-up"
+
+        sol = IKSolution(
+            model_angles_deg=model_angles,
+            servo_angles_deg=servo_angles,
+            pose=pose,
+            total_joint_delta_deg=total_joint_delta_deg,
+            branch_label=branch_label,
+            position_error_mm=position_error_mm,
+        )
+        valid_solutions.append(sol)
 
     if not valid_solutions:
         raise ValueError("No valid 3-link XYZ solution met the current joint-limit and workspace checks.")
 
-    return valid_solutions
+    # pick best solution (prefer minimal position error, then minimal joint travel)
+    valid_solutions.sort(key=lambda s: (s.position_error_mm, s.total_joint_delta_deg))
+    best_solution = valid_solutions[0]
+    return best_solution, valid_solutions
 
 
 class CartesianIKApp:
