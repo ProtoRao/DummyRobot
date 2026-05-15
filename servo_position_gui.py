@@ -9,7 +9,7 @@ from tkinter import messagebox
 
 SERVO_CHANNELS = [12, 13, 14, 10, 8]
 INITIAL_ANGLES = [90, 90, -90, 0, 0]
-ANGLE_LIMITS = [(0, 180), (0, 180), (-90, 90), (-90, 90), (-90, 90)]
+ANGLE_LIMITS = [(0, 180), (0, 180), (-150, 30), (-90, 90), (-90, 90)]
 ANGLE_STEP = 5
 BAUD_RATE = 115200
 DEFAULT_PORT = "COM7"
