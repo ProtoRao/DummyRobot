@@ -17,7 +17,7 @@ constexpr int16_t CENTERED_RANGE_DEGREES = 90;
 constexpr int16_t HALF_PULSE_RANGE[] = {235, 235, 235, 245, 245};
 constexpr uint8_t SMOOTH_MIN_STEP_PULSE = 1;
 constexpr uint8_t SMOOTH_MAX_STEP_PULSE = 2;
-constexpr uint8_t SMOOTH_STEP_DELAY_MS = 8;
+constexpr uint8_t SMOOTH_STEP_DELAY_MS = 32;
 
 int16_t currentAngles[SERVO_COUNT];
 uint16_t currentPulses[SERVO_COUNT];
@@ -59,58 +59,11 @@ void updateServosNonBlocking() {
   }
 }
 
-// void moveServoSmooth(uint8_t servoIndex, uint16_t targetPulse) {
-//   const uint8_t channel = SERVO_CHANNELS[servoIndex];
-//   uint16_t currentPulse = currentPulses[servoIndex];
-
-//   if (currentPulse == 0) {
-//     pwm.setPWM(channel, 0, targetPulse);
-//     currentPulses[servoIndex] = targetPulse;
-//     return;
-//   }
-
-//   while (currentPulse != targetPulse) {
-//     const uint16_t remainingDistance =
-//         (currentPulse < targetPulse) ? (targetPulse - currentPulse) : (currentPulse - targetPulse);
-//     uint16_t stepPulse = remainingDistance / 6;
-//     stepPulse = constrain(stepPulse, SMOOTH_MIN_STEP_PULSE, SMOOTH_MAX_STEP_PULSE);
-
-//     uint16_t nextPulse = currentPulse;
-//     if (currentPulse < targetPulse) {
-//       nextPulse = static_cast<uint16_t>(currentPulse + stepPulse);
-//       if (nextPulse > targetPulse) {
-//         nextPulse = targetPulse;
-//       }
-//     } else {
-//       nextPulse = static_cast<uint16_t>(currentPulse - stepPulse);
-//       if (nextPulse < targetPulse) {
-//         nextPulse = targetPulse;
-//       }
-//     }
-
-//     pwm.setPWM(channel, 0, nextPulse);
-//     currentPulse = nextPulse;
-//     delay(SMOOTH_STEP_DELAY_MS);
-//   }
-
-//   currentPulses[servoIndex] = targetPulse;
-// }
-
 void setServoByIndex(uint8_t servoIndex, int16_t angle) {
   angle = constrain(angle, LOGICAL_MIN_ANGLES[servoIndex], LOGICAL_MAX_ANGLES[servoIndex]);
   targetPulses[servoIndex] = physicalAngleToPulse(servoIndex, angle);
   currentAngles[servoIndex] = angle; // Track logical angle
 }
-
-// void setServoByIndex(uint8_t servoIndex, int16_t angle) {
-//   angle = constrain(angle, LOGICAL_MIN_ANGLES[servoIndex], LOGICAL_MAX_ANGLES[servoIndex]);
-//   uint16_t finalPulse = 0;
-
-//   finalPulse = physicalAngleToPulse(servoIndex, angle);
-  
-//   moveServoSmooth(servoIndex, finalPulse);
-//   currentAngles[servoIndex] = angle;
-// }
 
 void applyInitialPositions() {
   for (uint8_t i = 0; i < SERVO_COUNT; ++i) {
